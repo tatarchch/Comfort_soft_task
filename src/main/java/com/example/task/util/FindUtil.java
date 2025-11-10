@@ -13,7 +13,6 @@ public class FindUtil {
             throw new IllegalArgumentException("Список чисел не может быть пустым");
         }
 
-
         int min = numbers.get(0);
         for (int i = 1; i < n; i++) {
             if (numbers.get(i) < min) {
