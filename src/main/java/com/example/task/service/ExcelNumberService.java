@@ -7,6 +7,7 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -17,8 +18,21 @@ import java.util.List;
 public class ExcelNumberService {
 
     public ResponseEntity<?> findMinNumber(String path, int n) {
+        if (n <= 0) {
+            String error = "N должно быть положительным";
+            log.warn(error);
+            return ResponseEntity.badRequest().body(error);
+        }
+
+        File file = new File(path);
+        if (!file.exists() || !file.isFile()) {
+            String error = "Файл не существует: " + path;
+            log.warn(error);
+            return ResponseEntity.badRequest().body(error);
+        }
+
         try {
-            List<Integer> numbers = this.readNumbersFromExcel(path);
+            List<Integer> numbers = this.readNumbersFromExcel(path, n);
 
             if (numbers.isEmpty()) {
                 String error = "Файл не содержит чисел";
@@ -26,24 +40,20 @@ public class ExcelNumberService {
                 return ResponseEntity.badRequest().body(error);
             }
 
-            if (n <= 0 || n > numbers.size()) {
-                String error = "N должно быть в диапазоне от 1 до " + numbers.size();
-                log.warn(error);
-                return ResponseEntity.badRequest().body(error);
-            }
+            int actualN = Math.min(n, numbers.size());
+            int result = FindUtil.findMin(numbers, actualN);
 
-            return ResponseEntity.ok(FindUtil.findMin(numbers, n));
+            return ResponseEntity.ok(result);
 
         } catch (IOException e) {
-            String error = "Файл по такому пути не найден";
-            log.warn(error);
+            String error = "Ошибка чтения файла: ";
+            log.warn("{}: {}", error, path);
             return ResponseEntity.badRequest().body(error);
         }
-
     }
 
-    private List<Integer> readNumbersFromExcel(String path) throws IOException {
-        List<Integer> numbers = new ArrayList<>();
+    private List<Integer> readNumbersFromExcel(String path, int n) throws IOException {
+        List<Integer> numbers = new ArrayList<>(n);
 
         try (FileInputStream file = new FileInputStream(path);
              Workbook workbook = new XSSFWorkbook(file)) {
@@ -51,23 +61,31 @@ public class ExcelNumberService {
             Sheet sheet = workbook.getSheetAt(0);
             DataFormatter dataFormatter = new DataFormatter();
 
-            for (Row row : sheet) {
+            for (int rowIndex = 0; rowIndex < n && rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+
+                Row row = sheet.getRow(rowIndex);
+                if (row == null) {
+                    continue;
+                }
+
                 Cell cell = row.getCell(0);
-                if (cell != null) {
-                    try {
-                        String cellValue = dataFormatter.formatCellValue(cell).trim();
+                if (cell == null) {
+                    continue;
+                }
 
-                        if (cellValue.isEmpty()) {
-                            continue;
-                        }
+                try {
+                    String cellValue = dataFormatter.formatCellValue(cell).trim();
 
-                        int number = Integer.parseInt(cellValue);
-                        numbers.add(number);
-
-                    } catch (NumberFormatException e) {
-                        log.warn("Невозможно преобразовать значение '{}' в целое число в строке {}",
-                                dataFormatter.formatCellValue(cell), row.getRowNum() + 1);
+                    if (cellValue.isEmpty()) {
+                        continue;
                     }
+
+                    int number = Integer.parseInt(cellValue);
+                    numbers.add(number);
+
+                } catch (NumberFormatException e) {
+                    String error = "Ошибка чтения файла";
+                    log.warn("{}: {}", error, e.getMessage());
                 }
             }
         }
